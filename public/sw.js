@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hct-pwa-v9';
+const CACHE_NAME = 'hct-pwa-v10';
 const STATIC_ASSETS = ['/', '/index.html', '/styles.css', '/app.js', '/roads.json', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', (event) => {

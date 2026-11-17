@@ -560,19 +560,10 @@ async function fetchCustDataFromHct() {
   }
 }
 
-// ==================== QR Code 掃描（優先使用 LINE 原生 liff.scanCodeV2，備援網頁相機） ====================
+let isCameraPaused = false;
+
+// ==================== QR Code 掃描（保持相機串流常駐 Pause/Resume，避免重複詢問權限） ====================
 async function triggerQrScan() {
-  if (isLiffReady && isInLineClient && window.liff && typeof window.liff.scanCodeV2 === 'function') {
-    try {
-      const result = await window.liff.scanCodeV2();
-      if (result && result.value) {
-        await inspectQrInput(result.value);
-      }
-      return;
-    } catch (err) {
-      console.warn('liff.scanCodeV2 fallback to web camera:', err);
-    }
-  }
   await toggleCameraScan();
 }
 
@@ -580,8 +571,12 @@ async function toggleCameraScan() {
   const readerEl = document.getElementById('qr-reader');
   const btn = document.getElementById('btn-camera-scan');
 
+  // 若正在掃描中，點擊則暫停並隱藏畫面（不切斷底層相機權限，下次點擊免重問）
   if (isCameraScanning && html5QrScanner) {
-    await html5QrScanner.stop();
+    try {
+      html5QrScanner.pause(true);
+      isCameraPaused = true;
+    } catch {}
     readerEl.style.display = 'none';
     isCameraScanning = false;
     btn.textContent = '📷 掃描物流貼紙QRCode';
@@ -590,6 +585,19 @@ async function toggleCameraScan() {
 
   readerEl.style.display = 'block';
   btn.textContent = '⏹️ 停止掃描';
+
+  // 若先前已取得權限並處於暫停狀態，直接 resume() 0秒喚醒，不再觸發權限詢問
+  if (html5QrScanner && isCameraPaused) {
+    try {
+      isCameraScanning = true;
+      isCameraPaused = false;
+      html5QrScanner.resume();
+      return;
+    } catch {
+      isCameraPaused = false;
+    }
+  }
+
   if (!html5QrScanner) {
     html5QrScanner = new Html5Qrcode('qr-reader');
   }
@@ -600,7 +608,10 @@ async function toggleCameraScan() {
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 240, height: 240 } },
       async (decodedText) => {
-        await html5QrScanner.stop();
+        try {
+          html5QrScanner.pause(true);
+          isCameraPaused = true;
+        } catch {}
         readerEl.style.display = 'none';
         isCameraScanning = false;
         btn.textContent = '📷 掃描物流貼紙QRCode';
