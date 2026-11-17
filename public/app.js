@@ -944,24 +944,95 @@ async function submitWaybill(submitToHct = true) {
       }
     }
 
+    const senderZip = document.getElementById('Sender_zip').value;
+    const recipientZip = document.getElementById('Recipient_zip').value;
+    const sendTypeMap = {
+      '11': '寄件人付款(月結)',
+      '31': '寄件人付款(現收)',
+      '21': '收件人付款',
+      '41': '代收貨款'
+    };
+    const goodsTypeMap = {
+      '001': '常溫',
+      '008': '冷藏',
+      '003': '冷凍',
+      '100': 'GDP'
+    };
+
+    const senderFullAddress = [
+      senderZip ? `${senderZip} ` : '',
+      senderCountry,
+      senderCity,
+      senderRoad,
+      senderAddress
+    ]
+      .filter(Boolean)
+      .join('');
+
+    const recipientFullAddress =
+      deliveryType === '1'
+        ? `[營業所自領] ${formPayload.ToCountry} ${recipientAddress}`
+        : [
+            recipientZip ? `${recipientZip} ` : '',
+            recipientCountry,
+            recipientCity,
+            recipientRoad,
+            recipientAddress
+          ]
+            .filter(Boolean)
+            .join('');
+
+    const recordPayload = {
+      createdAt: new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false }),
+      Invoice: String(formPayload.Invoice).replace(/\D/g, ''),
+      CustID_Value: custId,
+      Send_Type_Text: sendTypeMap[sendType] || sendType,
+      Goods_Type_Text: goodsTypeMap[goodsType] || goodsType,
+      ProductType_Text: productText,
+      Count: countVal,
+      Content: contentText,
+      Sender_Name: senderNameWithLine,
+      Sender_Phone: senderPhone,
+      Sender_Ext: senderExt,
+      Sender_FullAddress: senderFullAddress,
+      Recipient_Name: recipientName,
+      Recipient_Phone: recipientPhone,
+      Recipient_Ext: recipientExt,
+      DeliveryType_Text: deliveryType === '1' ? '營業所自領' : '宅配',
+      Recipient_zip: recipientZip,
+      Recipient_Country: recipientCountry,
+      Recipient_City: recipientCity,
+      Recipient_Road: recipientRoad,
+      Recipient_Address: recipientAddress,
+      Recipient_FullAddress: recipientFullAddress,
+      Money: sendType === '41' ? String(formPayload.Money || '') : '',
+      CreditCard_Text: formPayload.CreditCard ? '是' : '否',
+      ValueDeclared: String(formPayload.ValueDeclared || '').replace(/\D/g, ''),
+      Replay_Text: formPayload.Replay ? '是' : '否',
+      Date: formPayload.Date || '',
+      Remark: remarkText,
+      hctStatus: submitToHct ? '✅ 已送出至新竹物流' : '僅留底(未送新竹物流)',
+      gsheetStatus: '已寫入Google試算表',
+      qrUrl: currentQrUrl
+    };
+
     const json = await callBackend('submit', {
+      record: recordPayload,
       form: formPayload,
       meta: {
         submitToHct,
         qrUrl: currentQrUrl,
         gsheetWebhookUrl: getGasUrl(),
-        Sender_zip: document.getElementById('Sender_zip').value,
-        Recipient_zip: document.getElementById('Recipient_zip').value,
+        Sender_zip: senderZip,
+        Recipient_zip: recipientZip,
         ProductType_Text: productText
       }
     });
 
-    if (json.record) {
-      upsertLocalRecord({
-        ...json.record,
-        formBackup: { ...formPayload, Sign: '' }
-      });
-    }
+    upsertLocalRecord({
+      ...(json.record && json.record.Invoice ? json.record : recordPayload),
+      formBackup: { ...formPayload, Sign: '' }
+    });
 
     if (deliveryType === '2') {
       saveRecipientToLocalFav({
