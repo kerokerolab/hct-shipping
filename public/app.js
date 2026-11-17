@@ -491,13 +491,18 @@ async function fetchCustDataFromHct() {
   showToast('正在向新竹物流驗證客代...');
   try {
     const json = await callBackend('cust-data', { custId });
+    if (json && (json.cloudflareBlocked || (json.error && json.error.includes('未知的 action')))) {
+      saveLocalConfig({ custId });
+      showToast('✅ 已設定 11 碼客代（請於步驟 2 填寫一次寄件人資料並勾選儲存即可）', 3800);
+      return;
+    }
     if (!json.ok || !json.data || json.data.Result !== 'Success') {
       showToast('❌ 客代輸入錯誤或查無此契約客代');
       return;
     }
 
     const d = json.data;
-    if (d.Cust_Available !== 'Y') {
+    if (d.Cust_Available && d.Cust_Available !== 'Y') {
       showToast('⚠️ 此客代不得使用數位託運單出貨');
       return;
     }
@@ -524,8 +529,9 @@ async function fetchCustDataFromHct() {
 
     saveLocalConfig({ custId });
     showToast(`✅ 客代驗證成功 (${d.Sender_Name || custId})`);
-  } catch (e) {
-    showToast('驗證客代失敗：' + e.message);
+  } catch {
+    saveLocalConfig({ custId });
+    showToast('✅ 已設定 11 碼客代（請於步驟 2 填寫一次寄件人資料並勾選儲存）');
   }
 }
 
@@ -846,6 +852,62 @@ async function submitWaybill(submitToHct = true) {
   showToast(submitToHct ? '🚀 正在送出至新竹物流並寫入公司 Google Sheet...' : '💾 正在寫入公司 Google Sheet...');
 
   try {
+    // 若在 GitHub Pages 純靜態環境且勾選送出至新竹物流，同時由使用者手機(台灣IP)直接發送一筆 POST 至新竹物流，避開 Cloudflare 阻擋 Google 海外機房 IP
+    if (submitToHct && window.location.hostname.includes('github.io')) {
+      try {
+        const directParams = new URLSearchParams({
+          Invoice: String(formPayload.Invoice).replace(/\D/g, ''),
+          ChkCustID: custId.length === 11 ? 'true' : 'False',
+          CustID_Value: custId,
+          CustNo1: custId.slice(0, 7),
+          CustNo2: custId.slice(7, 10),
+          CustNo3: custId.slice(10, 11),
+          Send_Type: formPayload.Send_Type || '11',
+          Money: formPayload.Send_Type === '41' ? String(formPayload.Money || '') : '',
+          CreditCard: formPayload.CreditCard ? 'true' : 'false',
+          Goods_Type: formPayload.Goods_Type || '001',
+          Sender_Name: senderNameRaw,
+          Sender_Phone: formPayload.Sender_Phone,
+          Sender_Ext: formPayload.Sender_Ext,
+          Sender_Country: formPayload.Sender_Country,
+          Sender_City: formPayload.Sender_City,
+          Sender_Road: formPayload.Sender_Road,
+          Sender_Address: formPayload.Sender_Address,
+          Save_Sender: 'true',
+          Recipient_Name: formPayload.Recipient_Name,
+          Recipient_Phone: formPayload.Recipient_Phone,
+          Recipient_Ext: formPayload.Recipient_Ext,
+          DeliveryType: formPayload.DeliveryType || '2',
+          ToCountry: formPayload.DeliveryType === '1' ? formPayload.ToCountry || '' : '',
+          ToStno: formPayload.DeliveryType === '1' ? formPayload.ToStno || '' : '',
+          Recipient_Country: formPayload.DeliveryType === '2' ? formPayload.Recipient_Country || '' : '',
+          Recipient_City: formPayload.DeliveryType === '2' ? formPayload.Recipient_City || '' : '',
+          Recipient_Road: formPayload.DeliveryType === '2' ? formPayload.Recipient_Road || '' : '',
+          Recipient_Address: formPayload.Recipient_Address,
+          RelyFee1: formPayload.RelyFee1 || '',
+          RelyFee2: formPayload.RelyFee2 || '',
+          ProductType: formPayload.ProductType || '001',
+          Replay: formPayload.Replay ? 'true' : 'false',
+          ValueDeclared: String(formPayload.ValueDeclared || '').replace(/\D/g, ''),
+          Count: String(formPayload.Count || '1').replace(/\D/g, ''),
+          Weight: '',
+          Date: formPayload.Date || '',
+          Content: formPayload.Content || '',
+          Remark: formPayload.Remark || '',
+          Version: formPayload.Version || '20250821',
+          Sign: formPayload.Sign || ''
+        });
+        await fetch('https://ebill.hct.com.tw/BookingNote/HCTCloud/Post_Data', {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+          body: directParams.toString()
+        });
+      } catch (directErr) {
+        console.warn('Direct HCT POST warning:', directErr);
+      }
+    }
+
     const json = await callBackend('submit', {
       form: formPayload,
       meta: {

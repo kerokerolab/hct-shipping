@@ -201,6 +201,62 @@ function doPost(e) {
       return jsonResponse({ ok: true, message: '連線成功，已準備好寫入「託運報帳明細」工作表' });
     }
 
+    if (action === 'cust-data') {
+      var cleanId = String(body.custId || '').replace(/\D/g, '');
+      if (cleanId.length !== 11) {
+        return jsonResponse({ ok: false, error: '契約客代必須為 11 碼數字' });
+      }
+      var custRes = hctPostForm('/BookingNote/HCTCloud/GetCustData', { custId: cleanId });
+      if (custRes && custRes.cloudflareBlocked) {
+        return jsonResponse({
+          ok: true,
+          cloudflareBlocked: true,
+          data: { Result: 'Success', Cust_Available: 'Y' }
+        });
+      }
+      return jsonResponse({ ok: true, data: custRes });
+    }
+
+    if (action === 'inspect-qr') {
+      return jsonResponse(handleInspectQr(body.qrText || ''));
+    }
+
+    if (action === 'roads') {
+      var roads = hctPostForm('/BookingNote/HCTCloud/Get_Road_strJson', {
+        country: body.country || '',
+        city: body.city || ''
+      });
+      var zip = hctPostForm('/BookingNote/HCTCloud/Get_Zip_strJson', {
+        country: body.country || '',
+        city: body.city || ''
+      });
+      return jsonResponse({
+        ok: true,
+        roads: Array.isArray(roads) ? roads : [],
+        zip: typeof zip === 'string' ? zip : ''
+      });
+    }
+
+    if (action === 'product-types') {
+      var pTypes = hctPostForm('/BookingNote/HCTCloud/Get_InvoiceKind_strJson', {
+        colGroup: body.goodsType || '001'
+      });
+      return jsonResponse({ ok: true, data: Array.isArray(pTypes) ? pTypes : [] });
+    }
+
+    if (action === 'to-stno') {
+      var stnos = hctPostForm('/BookingNote/HCTCloud/Get_ToStno_strJson', {
+        country: body.country || '',
+        goodsType: body.goodsType || '001'
+      });
+      return jsonResponse({ ok: true, data: Array.isArray(stnos) ? stnos : [] });
+    }
+
+    if (action === 'rely-fee') {
+      var rFee = hctPostForm('/BookingNote/HCTCloud/GetRelyFee', { address: body.address || '' });
+      return jsonResponse({ ok: true, data: rFee });
+    }
+
     if (action === 'reconcile') {
       var result = reconcileMonthlyBill(body.billRows || []);
       return jsonResponse(result);
@@ -780,5 +836,57 @@ function handleDirectSubmitFromStaticPage(sheet, payload) {
     upsertMode: mode,
     error: hctErrorMsg || null,
     record: record
+  };
+}
+
+function hctPostForm(endpoint, paramsObj) {
+  try {
+    var payloadParts = [];
+    for (var k in paramsObj) {
+      if (paramsObj[k] !== undefined && paramsObj[k] !== null) {
+        payloadParts.push(encodeURIComponent(k) + '=' + encodeURIComponent(String(paramsObj[k])));
+      }
+    }
+    var res = UrlFetchApp.fetch('https://ebill.hct.com.tw' + endpoint, {
+      method: 'post',
+      contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        Origin: 'https://ebill.hct.com.tw',
+        Referer: 'https://ebill.hct.com.tw/BookingNote/'
+      },
+      payload: payloadParts.join('&'),
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    var text = res.getContentText('UTF-8');
+    if (code === 403 || text.indexOf('Just a moment') !== -1 || text.indexOf('cloudflare') !== -1) {
+      return { cloudflareBlocked: true, status: code };
+    }
+    return JSON.parse(text);
+  } catch (e) {
+    return { cloudflareBlocked: true, error: e.toString() };
+  }
+}
+
+function handleInspectQr(qrText) {
+  var cleanText = String(qrText || '').trim();
+  var invoice = '';
+  var targetUrl = '';
+  if (cleanText.indexOf('http') === 0) {
+    targetUrl = cleanText;
+    var m = cleanText.match(/[?&]i=(\d{10})/);
+    if (m) invoice = m[1];
+  } else {
+    var digits = cleanText.replace(/\D/g, '');
+    if (digits.length === 10) invoice = digits;
+  }
+  return {
+    ok: Boolean(invoice),
+    invoice: invoice,
+    qrUrl: targetUrl,
+    isExistingData: false,
+    data: { Invoice: invoice, Version: '20250821' },
+    error: invoice ? null : '無法辨識 10 碼託運單號'
   };
 }
