@@ -36,6 +36,8 @@ var RECORD_HEADERS = [
   '備註',
   '新竹物流送出狀態',
   '原始QR網址',
+  '送件者LINE_ID',
+  '送件者LINE名稱',
   '對帳狀態',
   '請款書號碼',
   '物流發送日',
@@ -388,10 +390,10 @@ function reconcileMonthlyBill(billRows) {
       colleagueKey = sys.senderName || '未填名同仁';
 
       recSheet
-        .getRange(sys.sheetRowIndex, 31, 1, 6)
+        .getRange(sys.sheetRowIndex, 33, 1, 6)
         .setValues([[statusText, "'" + currBillingNo, shipDate, billBoxes, billWeight, billAmount]]);
 
-      var statusCell = recSheet.getRange(sys.sheetRowIndex, 31);
+      var statusCell = recSheet.getRange(sys.sheetRowIndex, 33);
       if (statusType === 'matched') {
         statusCell.setBackground('#dcfce7').setFontColor('#166534').setFontWeight('bold');
       } else {
@@ -636,7 +638,9 @@ function upsertRecordRow(sheet, r) {
     r.Date || '',
     r.Remark || '',
     r.hctStatus || '',
-    r.qrUrl || ''
+    r.qrUrl || '',
+    r.Line_UserId || '',
+    r.Line_DisplayName || ''
   ];
 
   var lastRow = sheet.getLastRow();
@@ -826,7 +830,9 @@ function handleDirectSubmitFromStaticPage(sheet, payload) {
     Remark: hctFormParams.Remark,
     hctStatus: hctStatus,
     gsheetStatus: '已集中寫入Google試算表',
-    qrUrl: qrUrl
+    qrUrl: qrUrl,
+    Line_UserId: meta.Line_UserId || ( payload.record && payload.record.Line_UserId ) || '',
+    Line_DisplayName: meta.Line_DisplayName || ( payload.record && payload.record.Line_DisplayName ) || ''
   };
 
   var mode = upsertRecordRow(sheet, record);

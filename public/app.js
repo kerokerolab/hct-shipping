@@ -1013,7 +1013,9 @@ async function submitWaybill(submitToHct = true) {
       Remark: remarkText,
       hctStatus: submitToHct ? '✅ 已送出至新竹物流' : '僅留底(未送新竹物流)',
       gsheetStatus: '已寫入Google試算表',
-      qrUrl: currentQrUrl
+      qrUrl: currentQrUrl,
+      Line_UserId: liffProfile ? liffProfile.userId || '' : '',
+      Line_DisplayName: liffProfile ? liffProfile.displayName || '' : ''
     };
 
     const json = await callBackend('submit', {
@@ -1025,7 +1027,9 @@ async function submitWaybill(submitToHct = true) {
         gsheetWebhookUrl: getGasUrl(),
         Sender_zip: senderZip,
         Recipient_zip: recipientZip,
-        ProductType_Text: productText
+        ProductType_Text: productText,
+        Line_UserId: liffProfile ? liffProfile.userId || '' : '',
+        Line_DisplayName: liffProfile ? liffProfile.displayName || '' : ''
       }
     });
 
