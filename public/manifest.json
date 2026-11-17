@@ -1,0 +1,18 @@
+{
+  "name": "新竹物流極速託運暨報帳系統",
+  "short_name": "HCT極速託運",
+  "description": "掃描新竹物流數位託運單 QR Code，一次輸入同步完成物流申報與 Google Sheets 報帳留底",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0284c7",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

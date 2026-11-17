@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0284c7" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>新竹物流數位託運單 (LINE LIFF)</title>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  <link rel="stylesheet" href="./styles.css?v=6" />
+  <!-- LINE LIFF v2 官方 SDK -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- 網頁版相機 QR Code 掃描庫 -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>📦 新竹物流數位託運單</h1>
+      <div class="sub" id="header-mode-sub">初始化連線中...</div>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="header-btn" onclick="openRecordsModal()">
+        📋 本機紀錄
+      </button>
+      <button type="button" class="header-btn" onclick="openSettingsModal()">
+        ⚙️ 設定
+      </button>
+    </div>
+  </header>
+
+  <div id="toast" class="toast"></div>
+
+  <main class="container">
+    <!-- ==================== 掃描貼紙 QR Code ==================== -->
+    <div class="card">
+      <div class="qr-box">
+        <button type="button" class="btn btn-primary btn-block" id="btn-camera-scan" onclick="triggerQrScan()" style="padding:13px; font-size:1rem;">
+          📷 掃描物流貼紙QRCode
+        </button>
+
+        <div id="qr-reader" style="display:none;"></div>
+
+        <div class="form-group" style="margin-top:10px; margin-bottom:0; text-align:left;">
+          <div style="display:flex; gap:6px;">
+            <input type="text" id="qr-raw-input" inputmode="numeric" maxlength="10" placeholder="手動輸入10碼託運單號" />
+            <button type="button" class="btn btn-secondary btn-sm" onclick="inspectQrInput()" style="white-space:nowrap;">
+              讀取單號
+            </button>
+          </div>
+        </div>
+
+        <div id="invoice-banner" class="invoice-banner" style="display:none;">
+          <div>
+            <div style="font-size:0.75rem; opacity:0.85;">託運單號</div>
+            <div class="num" id="display-invoice">900-466-8621</div>
+          </div>
+          <span id="invoice-state-tag" class="status-tag ok">新託運單</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 步驟 1：選擇寄件服務 ==================== -->
+    <div class="card">
+      <div class="card-title">
+        <span>選擇寄件服務</span>
+        <span class="step-pill">步驟 1</span>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group full">
+          <label>契約客戶客代（11碼，預設公司客代）</label>
+          <div style="display:flex; gap:6px;">
+            <input type="text" id="CustID_Value" inputmode="numeric" maxlength="11" placeholder="輸入 11 碼契約客代 (非契約免填)" />
+            <button type="button" class="btn btn-outline btn-sm" onclick="fetchCustDataFromHct()" style="white-space:nowrap;">
+              驗證客代
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group full">
+          <label><span class="req">*</span>寄件類別</label>
+          <div class="seg-group cols-4" id="seg-send-type">
+            <div class="seg-btn active" data-val="11" onclick="selectSeg('Send_Type','11')">寄件人付款(月結)</div>
+            <div class="seg-btn" data-val="31" onclick="selectSeg('Send_Type','31')">寄件人付款(現收)</div>
+            <div class="seg-btn" data-val="21" onclick="selectSeg('Send_Type','21')">收件人付款</div>
+            <div class="seg-btn" data-val="41" onclick="selectSeg('Send_Type','41')">代收貨款</div>
+          </div>
+          <input type="hidden" id="Send_Type" value="11" />
+        </div>
+
+        <div class="form-group full" id="cod-box" style="display:none;">
+          <label><span class="req">*</span>代收金額</label>
+          <div style="display:flex; gap:12px; align-items:center;">
+            <input type="number" id="Money" placeholder="代收金額 (上限99999)" />
+            <label style="display:flex; align-items:center; gap:5px; white-space:nowrap; margin:0; cursor:pointer;">
+              <input type="checkbox" id="CreditCard" /> 貨刷
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group full" style="margin-bottom:0;">
+          <label><span class="req">*</span>貨件溫層</label>
+          <div class="seg-group" id="seg-goods-type">
+            <div class="seg-btn active" data-val="001" onclick="selectSeg('Goods_Type','001')">常溫</div>
+            <div class="seg-btn" data-val="008" onclick="selectSeg('Goods_Type','008')">冷藏</div>
+            <div class="seg-btn" data-val="003" onclick="selectSeg('Goods_Type','003')">冷凍</div>
+          </div>
+          <input type="hidden" id="Goods_Type" value="001" />
+          <div style="font-size:0.75rem; color:#64748b; margin-top:4px;">
+            (請確認冷藏貨件已預冷6小時以上，冷凍貨件12小時以上且結凍)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 步驟 2：輸入寄件人資訊 ==================== -->
+    <div class="card">
+      <div class="card-title">
+        <span>輸入寄件人資訊</span>
+        <span class="step-pill">步驟 2</span>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group full">
+          <label><span class="req">*</span>寄件人姓名/公司名（自動帶入 LINE 名稱，可修改）</label>
+          <input type="text" id="Sender_Name" placeholder="請輸入公司名或寄件人姓名" />
+        </div>
+
+        <div class="form-group">
+          <label><span class="req">*</span>寄件人市話/手機(不含分機)</label>
+          <input type="tel" id="Sender_Phone" maxlength="10" placeholder="例：0912345678 或 0223456789" />
+        </div>
+
+        <div class="form-group">
+          <label>寄件人市話分機</label>
+          <input type="text" id="Sender_Ext" inputmode="numeric" maxlength="10" placeholder="分機 (選填)" />
+        </div>
+
+        <div class="form-group full">
+          <label><span class="req">*</span>寄件人地址</label>
+          <div class="address-row">
+            <input type="text" id="Sender_zip" placeholder="郵遞區號" readonly />
+            <select id="Sender_Country" onchange="onCountryChange('Sender')"></select>
+            <select id="Sender_City" onchange="onCityChange('Sender')">
+              <option value="">---------</option>
+            </select>
+          </div>
+          <div class="form-grid">
+            <div class="form-group" style="margin-bottom:0;">
+              <select id="Sender_Road">
+                <option value="">---------</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <input type="text" id="Sender_Address" placeholder="請輸入門牌號碼樓層地址" />
+            </div>
+          </div>
+          <div style="font-size:0.75rem; color:#64748b; margin-top:4px;">
+            (若下拉選項找不到對應路名請直接輸入地址即可)
+          </div>
+        </div>
+
+        <div class="form-group full" style="margin-bottom:0;">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.88rem; color:#0f172a;">
+            <input type="checkbox" id="Save_Sender" checked />
+            儲存我的寄件資料（記憶於此設備，下次自動帶入）
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 步驟 3：輸入收件人資訊 ==================== -->
+    <div class="card">
+      <div class="card-title">
+        <span>輸入收件人資訊</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="openFavRecipientModal()">
+            👥 常用收件人
+          </button>
+          <span class="step-pill">步驟 3</span>
+        </div>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group full">
+          <label><span class="req">*</span>收件人姓名/公司名</label>
+          <input type="text" id="Recipient_Name" placeholder="請輸入收件人姓名或公司名稱" />
+        </div>
+
+        <div class="form-group">
+          <label><span class="req">*</span>收件人市話/手機(不含分機)</label>
+          <input type="tel" id="Recipient_Phone" maxlength="10" placeholder="例：0912345678 或 031234567" />
+        </div>
+
+        <div class="form-group">
+          <label>收件人市話分機</label>
+          <input type="text" id="Recipient_Ext" inputmode="numeric" maxlength="10" placeholder="分機 (選填)" />
+        </div>
+
+        <div class="form-group full">
+          <label>配送方式</label>
+          <div class="seg-group cols-2" id="seg-delivery-type">
+            <div class="seg-btn active" data-val="2" onclick="selectSeg('DeliveryType','2')">宅配</div>
+            <div class="seg-btn" data-val="1" onclick="selectSeg('DeliveryType','1')">營業所自領</div>
+          </div>
+          <input type="hidden" id="DeliveryType" value="2" />
+        </div>
+
+        <div class="form-group full" id="stno-box" style="display:none;">
+          <label><span class="req">*</span>選擇自領營業所</label>
+          <div class="form-grid">
+            <select id="ToCountry" onchange="onToCountryChange()"></select>
+            <select id="ToStno" onchange="onToStnoChange()">
+              <option value="">---------</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group full" id="recipient-addr-box" style="margin-bottom:0;">
+          <label><span class="req">*</span>收件人地址</label>
+          <div class="address-row">
+            <input type="text" id="Recipient_zip" placeholder="郵遞區號" readonly />
+            <select id="Recipient_Country" onchange="onCountryChange('Recipient')"></select>
+            <select id="Recipient_City" onchange="onCityChange('Recipient')">
+              <option value="">---------</option>
+            </select>
+          </div>
+          <div class="form-grid">
+            <div class="form-group" style="margin-bottom:0;">
+              <select id="Recipient_Road" onchange="checkRelyFee()">
+                <option value="">---------</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <input type="text" id="Recipient_Address" placeholder="請輸入門牌號碼樓層地址" onchange="checkRelyFee()" />
+            </div>
+          </div>
+          <div style="font-size:0.75rem; color:#64748b; margin-top:4px;">
+            (若下拉選項找不到對應路名請直接輸入地址即可)
+          </div>
+          <input type="hidden" id="RelyFee1" value="" />
+          <input type="hidden" id="RelyFee2" value="" />
+          <div id="rely-fee-alert" class="rely-alert" style="display:none;">
+            ⚠️ 此配送地址為困配區域需加收聯運費
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 步驟 4：輸入託運需求 ==================== -->
+    <div class="card">
+      <div class="card-title">
+        <span>輸入託運需求</span>
+        <span class="step-pill">步驟 4</span>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label><span class="req">*</span>商品種類</label>
+          <select id="ProductType" onchange="onProductTypeChange()">
+            <option value="001">一般</option>
+            <option value="004">蔬果</option>
+            <option value="011">學生行李</option>
+            <option value="006">來回件</option>
+            <option value="009">糕餅</option>
+            <option value="041">文旦</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="display:flex; align-items:flex-end; padding-bottom:8px;">
+          <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer; font-size:0.88rem;">
+            <input type="checkbox" id="Replay" /> 回單(契約客戶才可以來回件)
+          </label>
+        </div>
+
+        <div class="form-group full">
+          <label>報值金額（非必填，需加收1%報值費，報值上限99,999元）</label>
+          <input type="number" id="ValueDeclared" maxlength="5" placeholder="無需報值則免填" />
+        </div>
+
+        <div class="form-group">
+          <label><span class="req">*</span>件數</label>
+          <input type="number" id="Count" value="1" min="1" max="999" inputmode="numeric" />
+        </div>
+
+        <div class="form-group">
+          <label>希望送達日 (限10日內，選填)</label>
+          <input type="date" id="Date" />
+        </div>
+
+        <div class="form-group full">
+          <label>品名(內容物)</label>
+          <input type="text" id="Content" placeholder="請輸入包裹品名或內容物" />
+        </div>
+
+        <div class="form-group full" style="margin-bottom:0;">
+          <label>備註(選填)</label>
+          <input type="text" id="Remark" maxlength="100" placeholder="配送備註或報帳說明 (上限100字)" />
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 步驟 5：寄件人簽名 ==================== -->
+    <div class="card">
+      <div class="card-title">
+        <span>寄件人簽名（請正楷簽名）</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="clearSignatureCanvas()">
+            🧹 清除重簽
+          </button>
+          <span class="step-pill">步驟 5</span>
+        </div>
+      </div>
+
+      <div class="sig-canvas-wrap" id="sig-canvas-wrap">
+        <canvas id="sig-canvas"></canvas>
+        <div class="sig-placeholder" id="sig-placeholder">
+          ✍️ 請在此框內手寫簽名（首次送出後將自動記憶供下次使用）
+        </div>
+      </div>
+      <div style="font-size:0.76rem; color:#64748b; margin-top:6px;">
+        本人已閱讀並同意新竹物流託運契約及個人資料告知事項。首次手寫簽名送出後會自動儲存於本機，下次寄件直接帶出；如需重簽請點選「🧹 清除重簽」。
+      </div>
+    </div>
+
+    <!-- ==================== 完成送出 ==================== -->
+    <div class="card" style="border: 2px solid #0284c7;">
+      <button type="button" class="btn btn-accent btn-block" id="btn-submit-both" style="padding:15px; font-size:1.08rem;" onclick="submitWaybill(true)">
+        🚀 完成送出（新竹物流申報 ＋ 集中寫入 Google Sheet）
+      </button>
+      <div style="margin-top:8px; text-align:center;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="submitWaybill(false)">
+          💾 僅寫入 Google Sheet 報帳留底（不送出新竹物流 / 補登用）
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== 彈窗 1：常用收件人 (本機記憶) ==================== -->
+  <div class="modal-backdrop" id="modal-fav">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>👥 常用收件人（本機自動記憶最近 100 筆）</h3>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeFavRecipientModal()">關閉</button>
+      </div>
+      <div id="fav-modal-list"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 彈窗 2：本機寄件紀錄 ==================== -->
+  <div class="modal-backdrop" id="modal-records">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>📋 本機寄件紀錄</h3>
+        <div style="display:flex; gap:6px;">
+          <button type="button" class="btn btn-primary btn-sm" onclick="exportRecordsCsvClient()">⬇️ 匯出 CSV</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeRecordsModal()">關閉</button>
+        </div>
+      </div>
+      <div style="font-size:0.78rem; color:#64748b; margin-bottom:10px;">
+        此處僅顯示您這支手機送出過的紀錄。若遇到物流連線失敗，可點選「🔄 載入補送」重新送出。
+      </div>
+      <div id="records-list"></div>
+    </div>
+  </div>
+
+  <!-- ==================== 彈窗 3：系統與 LIFF 設定 ==================== -->
+  <div class="modal-backdrop" id="modal-settings">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>⚙️ 系統與 LINE LIFF 設定</h3>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeSettingsModal()">關閉</button>
+      </div>
+
+      <div class="form-group">
+        <label>LINE LIFF ID（選填，例如：<code>2000123456-AbCdEfGh</code>）</label>
+        <input type="text" id="set-liff-id" placeholder="填入後於 LINE 開啟可自動抓同仁名稱與原生掃碼" />
+      </div>
+
+      <div class="form-group">
+        <label>公司集中報帳 Google Apps Script 網址 (GAS Web App URL)</label>
+        <input type="text" id="set-gsheet-url" placeholder="https://script.google.com/macros/s/.../exec" />
+      </div>
+
+      <div class="form-group">
+        <label>公司預設 11 碼契約客代（儲存於此設備本機）</label>
+        <input type="text" id="set-default-cust-id" maxlength="11" placeholder="請輸入 11 碼契約客代" />
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveGasSettings()">
+          💾 儲存於此設備本機
+        </button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="testGsheetWebhook()">
+          🧪 測試 Google Sheet 連線
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="copyColleagueShareLink()">
+          🔗 複製同仁初始化連結
+        </button>
+      </div>
+
+      <div style="font-size:0.8rem; color:#475569; background:#f8fafc; padding:10px; border-radius:8px; line-height:1.5;">
+        <strong>💡 資安與隱私保護說明：</strong><br/>
+        1. 所有設定（LIFF ID、GAS 網址、11碼客代）<strong>僅儲存於您個人的手機/電腦瀏覽器本機（<code>localStorage</code>）</strong>，絕不會上傳至公開的 GitHub 程式碼庫。<br/>
+        2. 首次設定完成後，可點選「🔗 複製同仁初始化連結」在內部私人 LINE 群組傳給同仁，同仁點開即自動寫入其手機本機。
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 彈窗 4：送出成功確認框 (LIFF 互動) ==================== -->
+  <div class="modal-backdrop" id="modal-success">
+    <div class="modal-card" style="text-align:center;">
+      <div style="font-size:3rem; margin-bottom:6px;">🎉</div>
+      <h3 style="margin:0 0 8px 0; color:#065f46; font-size:1.2rem;" id="success-modal-title">託運單已成功送出！</h3>
+      <div id="success-modal-summary" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; text-align:left; font-size:0.9rem; line-height:1.6; margin-bottom:14px;"></div>
+
+      <div style="display:grid; gap:8px;">
+        <button type="button" class="btn btn-primary btn-block" onclick="closeSuccessModalAndContinue()">
+          ➕ 繼續寄下一件（掃描下一張貼紙）
+        </button>
+        <button type="button" class="btn btn-outline btn-block" id="btn-send-line-msg" onclick="sendSummaryToLineChat()">
+          💬 發送寄件摘要到 LINE 聊天室
+        </button>
+        <button type="button" class="btn btn-secondary btn-block" id="btn-close-liff" onclick="closeLiffOrModal()">
+          ✅ 關閉視窗返回 LINE
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./app.js?v=6"></script>
+</body>
+</html>

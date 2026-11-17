@@ -1,0 +1,8 @@
+node_modules/
+data/
+public/config.json
+.DS_Store
+*.xlsx
+*.xls
+*.csv
+1498769.jpg

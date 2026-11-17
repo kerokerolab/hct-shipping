@@ -1,0 +1,9 @@
+{
+  "name": "hct-pwa-shipping-tracker",
+  "version": "1.0.0",
+  "description": "新竹物流數位託運單 PWA 極速填單與 Google Sheets 自動報帳留底系統",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
