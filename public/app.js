@@ -1354,27 +1354,26 @@ async function copyColleagueShareLink() {
 
   await saveGasSettings();
 
+  // 組裝包含 liffId、gas、cust 三項參數的初始化連結
+  let shareUrl = '';
   if (liffId) {
-    const liffUrl = `https://liff.line.me/${liffId}`;
-    try {
-      await navigator.clipboard.writeText(liffUrl);
-      showToast(`🔗 已複製 LINE LIFF 連結 (${liffUrl})！`);
-      return;
-    } catch {
-      prompt('請複製以下 LINE LIFF 連結分享給同仁：', liffUrl);
-      return;
-    }
+    const liffUrl = new URL(`https://liff.line.me/${liffId}`);
+    liffUrl.searchParams.set('liffId', liffId);
+    if (gsheetUrl) liffUrl.searchParams.set('gas', gsheetUrl);
+    if (custId) liffUrl.searchParams.set('cust', custId);
+    shareUrl = liffUrl.toString();
+  } else {
+    const webUrl = new URL(window.location.origin + window.location.pathname);
+    if (gsheetUrl) webUrl.searchParams.set('gas', gsheetUrl);
+    if (custId) webUrl.searchParams.set('cust', custId);
+    shareUrl = webUrl.toString();
   }
 
-  const u = new URL(window.location.origin + window.location.pathname);
-  if (gsheetUrl) u.searchParams.set('gas', gsheetUrl);
-  if (custId) u.searchParams.set('cust', custId);
-
   try {
-    await navigator.clipboard.writeText(u.toString());
-    showToast('🔗 已複製「同仁一鍵設定連結」！可貼到 LINE 群組給同仁點開');
+    await navigator.clipboard.writeText(shareUrl);
+    showToast('🔗 已複製含「LIFF ID＋GAS網址＋客代」的同仁初始化連結！', 3800);
   } catch {
-    prompt('請複製以下連結分享給同仁：', u.toString());
+    prompt('請複製以下同仁初始化連結：', shareUrl);
   }
 }
 
@@ -1383,16 +1382,26 @@ window.addEventListener('DOMContentLoaded', async () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
+  // 同時解析網址參數與 LINE LIFF 的 liff.state 參數，確保三個設定值都能自動寫入本機
   const params = new URLSearchParams(window.location.search);
-  const gasParam = params.get('gas');
-  const custParam = params.get('cust');
-  const liffParam = params.get('liffId');
+  const liffState = params.get('liff.state');
+  const stateParams = liffState
+    ? new URLSearchParams(liffState.startsWith('?') ? liffState.slice(1) : liffState)
+    : null;
+
+  const getParam = (key) => params.get(key) || (stateParams ? stateParams.get(key) : null);
+
+  const gasParam = getParam('gas');
+  const custParam = getParam('cust');
+  const liffParam = getParam('liffId');
+
   if (gasParam || custParam || liffParam) {
     const patch = {};
-    if (gasParam && gasParam.startsWith('https://script.google.com/')) patch.gsheetUrl = gasParam;
+    if (gasParam && gasParam.startsWith('https://script.google.com/')) patch.gsheetUrl = gasParam.trim();
     if (custParam) patch.custId = custParam.replace(/\D/g, '');
     if (liffParam) patch.liffId = liffParam.trim();
     saveLocalConfig(patch);
+    showToast('✅ 已自動將 LIFF ID、Google Sheet 與客代存入您的設備本機！', 3800);
   }
 
   initCountrySelects();
