@@ -1,5 +1,5 @@
-const CACHE_NAME = 'hct-pwa-v7';
-const STATIC_ASSETS = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.json', '/icon.svg'];
+const CACHE_NAME = 'hct-pwa-v8';
+const STATIC_ASSETS = ['/', '/index.html', '/styles.css', '/app.js', '/roads.json', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

@@ -405,6 +405,20 @@ async function onCountryChange(prefix, targetCity = '', targetRoad = '') {
   }
 }
 
+let cachedTwRoads = null;
+
+async function ensureTwRoadsLoaded() {
+  if (cachedTwRoads) return cachedTwRoads;
+  try {
+    const res = await fetch('./roads.json?v=8');
+    if (res.ok) {
+      cachedTwRoads = await res.json();
+      return cachedTwRoads;
+    }
+  } catch {}
+  return null;
+}
+
 async function onCityChange(prefix, targetRoad = '') {
   const country = document.getElementById(`${prefix}_Country`).value;
   const city = document.getElementById(`${prefix}_City`).value;
@@ -418,6 +432,20 @@ async function onCityChange(prefix, targetRoad = '') {
     zipInput.value = TW_DISTRICTS[country][city];
   }
 
+  // 1. 直接從靜態 ./roads.json 載入全台路名清單（免外網 API，GitHub Pages 秒開）
+  const roadsDb = await ensureTwRoadsLoaded();
+  if (roadsDb && roadsDb[country] && Array.isArray(roadsDb[country][city])) {
+    const roadList = roadsDb[country][city];
+    roadSel.innerHTML =
+      `<option value="">---------</option>` +
+      roadList.map((r) => `<option value="${r}">${r}</option>`).join('');
+    if (targetRoad) {
+      roadSel.value = targetRoad;
+    }
+    return;
+  }
+
+  // 2. 備援查詢
   try {
     const json = await callBackend('roads', { country, city });
     if (json && json.ok) {
@@ -430,9 +458,6 @@ async function onCityChange(prefix, targetRoad = '') {
           roadSel.value = targetRoad;
         }
       }
-    }
-    if (prefix === 'Recipient') {
-      checkRelyFee();
     }
   } catch {}
 }
